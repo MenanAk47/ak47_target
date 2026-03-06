@@ -150,8 +150,10 @@ local function StartTargeting()
     currentMenu = nil
 
     CreateThread(function()
+        local playerId = PlayerId()
         while isTargeting do
             Wait(0)
+            DisablePlayerFiring(playerId, true) -- Attack
             DisableControlAction(0, 24, true) -- Attack
             DisableControlAction(0, 25, true) -- Aim
             DisableControlAction(0, 140, true) -- Melee
