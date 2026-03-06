@@ -84,6 +84,7 @@ local function GenerateMenuPayload(entity, entityType, model, distance, coords)
 
                     if canAdd then
                         opt.zoneId = zoneId
+                        opt.matchedBone = matchedBone
                         idCounter = idCounter + 1
                         ActiveOptions[idCounter] = opt
                         table.insert(menuPayload, {
@@ -145,8 +146,8 @@ local function StartTargeting()
 
     CreateThread(function()
         local hasTarget = false
-        local flag = 511 -- Start with default raycast flag
-        local lastPayloadCount = 0 -- Tracks options to update menu dynamically if you walk closer
+        local flag = 511
+        local lastPayloadCount = 0
 
         while isTargeting do
             if IsPauseMenuActive() then
@@ -159,10 +160,8 @@ local function StartTargeting()
 
             if hit then
                 local distance = #(playerCoords - endCoords)
-                
                 local entityType = entityHit > 0 and GetEntityType(entityHit) or 0
 
-                -- Alternating Raycast: If we hit the world, swap flags and try again to catch entities in glass/water
                 if entityType == 0 then
                     local _flag = flag == 511 and 26 or 511
                     local _hit, _entityHit, _endCoords = Utils.RaycastCamera(10.0, _flag)
@@ -174,7 +173,6 @@ local function StartTargeting()
                     end
                 end
 
-                -- Line of Sight Check: Prevent targeting through solid walls when using alternative flags
                 if entityHit > 0 and flag ~= 511 then
                     if not HasEntityClearLosToEntity(entityHit, PlayerPedId(), 7) then
                         entityHit = 0
@@ -182,16 +180,11 @@ local function StartTargeting()
                     end
                 end
 
-                local model = nil
-                if entityHit > 0 then
-                    local success, result = pcall(GetEntityModel, entityHit)
-                    model = success and result
-                end
+                local model = (entityHit > 0 and entityType > 0) and GetEntityModel(entityHit) or nil
                 
                 local payload = GenerateMenuPayload(entityHit, entityType, model, distance, endCoords)
                 local isValid = #payload > 0
 
-                -- Dynamic UI Update
                 if isValid ~= hasTarget then
                     hasTarget = isValid
                     if hasTarget then
@@ -208,17 +201,18 @@ local function StartTargeting()
                     SendNUIMessage({ type = "open", menu = payload })
                 end
 
-                -- Outline Logic
-                if hasTarget and entityHit > 0 and entityType ~= 1 then -- Avoid outlining peds/players
-                    if lastOutlinedEntity ~= entityHit then
-                        if lastOutlinedEntity then SetEntityDrawOutline(lastOutlinedEntity, false) end
-                        SetEntityDrawOutline(entityHit, true)
-                        lastOutlinedEntity = entityHit
-                    end
-                else
-                    if lastOutlinedEntity then
-                        SetEntityDrawOutline(lastOutlinedEntity, false)
-                        lastOutlinedEntity = nil
+                if Config.DrawOutline then
+                    if hasTarget and entityHit > 0 and entityType ~= 1 then
+                        if lastOutlinedEntity ~= entityHit then
+                            if lastOutlinedEntity then SetEntityDrawOutline(lastOutlinedEntity, false) end
+                            SetEntityDrawOutline(entityHit, true)
+                            lastOutlinedEntity = entityHit
+                        end
+                    else
+                        if lastOutlinedEntity then
+                            SetEntityDrawOutline(lastOutlinedEntity, false)
+                            lastOutlinedEntity = nil
+                        end
                     end
                 end
 
@@ -229,6 +223,37 @@ local function StartTargeting()
                     
                     SetCursorLocation(0.5, 0.5)
                     SetNuiFocus(true, true) 
+
+                    if currentTarget.entity and currentTarget.entity > 0 then
+                        CreateThread(function()
+                            local flag = 511
+
+                            while isMenuOpen do
+                                Wait(100)
+                                
+                                if DoesEntityExist(currentTarget.entity) then
+                                    local hit, entityHit, endCoords = Utils.RaycastCamera(10.0, flag)
+                                    
+                                    if entityHit == 0 then
+                                        local _flag = flag == 511 and 26 or 511
+                                        local _, _entityHit, _ = Utils.RaycastCamera(10.0, _flag)
+                                        if _entityHit == currentTarget.entity then
+                                            entityHit = _entityHit
+                                            flag = _flag
+                                        end
+                                    end
+
+                                    if entityHit ~= currentTarget.entity then
+                                        CloseMenu()
+                                        break
+                                    end
+                                else
+                                    CloseMenu()
+                                    break
+                                end
+                            end
+                        end)
+                    end
                 end
 
                 if IsDisabledControlJustReleased(0, 25) then 
@@ -237,7 +262,6 @@ local function StartTargeting()
 
             end
 
-            -- Swap raycast flag for the next tick if we didn't find anything
             if not hasTarget then
                 flag = flag == 511 and 26 or 511
             end
@@ -282,7 +306,8 @@ RegisterNUICallback('clicked', function(data, cb)
             entity = currentTarget.entity,
             coords = currentTarget.coords,
             distance = currentTarget.distance,
-            zone = option.zoneId
+            zone = option.zoneId,
+            bone = option.matchedBone
         }
 
         if option.onSelect or option.action then

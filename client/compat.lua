@@ -3,127 +3,270 @@
 -- =================================================================
 
 ---@param options table The raw options passed from legacy scripts
+---@param isQtarget boolean True if the export was called via qtarget, false if qb-target
 ---@return table formatted The options converted to the new format
-local function FormatOptions(options)
-    local formatted = {}
-    local distance = options.distance or 2.0
+local function FormatOptions(options, isQtarget)
+    local distance = options.distance
     local targetOptions = options.options or options
 
+    if type(targetOptions) ~= 'table' then return {} end
+
+    -- SAFE Hash-map to Array Conversion (Prevents Lua infinite loops)
+    local numericOptions = {}
     for k, v in pairs(targetOptions) do
-        if type(k) == 'number' then
-            v.distance = v.distance or distance
-            v.name = v.name or v.label
-            v.onSelect = v.onSelect or v.action
-            
-            -- Legacy Translation mapping
-            v.groups = v.groups or v.job or v.gang or v.citizenid
-            v.items = v.items or v.item or v.required_item
-            v.qtarget = true
-            
-            if v.event and v.type then
-                if v.type == 'server' then v.serverEvent = v.event 
-                elseif v.type == 'command' then v.command = v.event end
-                if v.type ~= 'client' then v.event = nil end
-            end
-            table.insert(formatted, v)
-        end
+        table.insert(numericOptions, v)
     end
-    return formatted
+    targetOptions = numericOptions
+
+    for id, v in pairs(targetOptions) do
+        if type(id) ~= 'number' then
+            targetOptions[id] = nil
+            goto continue
+        end
+
+        v.onSelect = v.action or v.onSelect
+        v.distance = v.distance or distance
+        v.name = v.name or v.label
+        v.items = v.item or v.required_item or v.items
+        v.groups = v.job or v.groups
+
+        -- Group formatting (job, gang, citizenid) without relying on non-standard table.type()
+        local groupType = type(v.groups)
+        if groupType == 'nil' then
+            v.groups = {}
+            groupType = 'table'
+        end
+        
+        if groupType == 'string' then
+            local val = v.gang
+            if type(v.gang) == 'table' then
+                val = {}
+                for k in pairs(v.gang) do val[#val + 1] = k end
+            end
+            if val then
+                v.groups = {v.groups, type(val) == 'table' and table.unpack(val) or val}
+            end
+
+            val = v.citizenid
+            if type(v.citizenid) == 'table' then
+                val = {}
+                for k in pairs(v.citizenid) do val[#val+1] = k end
+            end
+            if val then
+                v.groups = {v.groups, type(val) == 'table' and table.unpack(val) or val}
+            end
+        elseif groupType == 'table' then
+            local val = {}
+            local isArray = true
+            for k, _ in pairs(v.groups) do
+                if type(k) ~= 'number' then isArray = false break end
+            end
+            
+            if not isArray then
+                for k in pairs(v.groups) do val[#val + 1] = k end
+                v.groups = val
+                val = nil
+            end
+
+            val = v.gang
+            if type(v.gang) == 'table' then
+                local gangArr = {}
+                for k in pairs(v.gang) do gangArr[#gangArr + 1] = k end
+                val = gangArr
+            end
+            if val then
+                v.groups = {table.unpack(v.groups), type(val) == 'table' and table.unpack(val) or val}
+            end
+
+            val = v.citizenid
+            if type(v.citizenid) == 'table' then
+                local citArr = {}
+                for k in pairs(v.citizenid) do citArr[#citArr+1] = k end
+                val = citArr
+            end
+            if val then
+                v.groups = {table.unpack(v.groups), type(val) == 'table' and table.unpack(val) or val}
+            end
+        end
+
+        if type(v.groups) == 'table' and #v.groups == 0 then
+            v.groups = nil
+        end
+
+        -- Event and Command Routing
+        if v.event and v.type and v.type ~= 'client' then
+            if v.type == 'server' then
+                v.serverEvent = v.event
+            elseif v.type == 'command' then
+                v.command = v.event
+            end
+            v.event = nil
+            v.type = nil
+        end
+
+        -- Garbage collection
+        v.action = nil
+        v.job = nil
+        v.gang = nil
+        v.citizenid = nil
+        v.item = nil
+        v.required_item = nil
+        
+        -- Flag for main.lua payload routing (Sends entity directly instead of response table)
+        v.qtarget = true
+
+        ::continue::
+    end
+
+    return targetOptions
 end
 
 ---@param exportName string The name of the export to hook into
 ---@param func function The function to execute
 local function ExportHandler(exportName, func)
-    AddEventHandler(('__cfx_export_qb-target_%s'):format(exportName), function(setCB) setCB(func) end)
-    AddEventHandler(('__cfx_export_qtarget_%s'):format(exportName), function(setCB) setCB(func) end)
+    AddEventHandler(('__cfx_export_qb-target_%s'):format(exportName), function(setCB) 
+        setCB(function(...) return func(false, ...) end) 
+    end)
+    AddEventHandler(('__cfx_export_qtarget_%s'):format(exportName), function(setCB) 
+        setCB(function(...) return func(true, ...) end) 
+    end)
 end
 
 -- =================================================================
 -- 2. ZONE COMPATIBILITY EXPORTS
 -- =================================================================
 
-ExportHandler('AddBoxZone', function(name, center, length, width, options, targetoptions)
+ExportHandler('AddBoxZone', function(isQtarget, name, center, length, width, options, targetoptions)
+    local z = center.z
+
+    if not options.minZ then options.minZ = -100 end
+    if not options.maxZ then options.maxZ = 800 end
+
+    if not options.useZ then
+        z = z + math.abs(options.maxZ - options.minZ) / 2
+        center = vec3(center.x, center.y, z)
+    end
+
+    local formattedOpts = FormatOptions(targetoptions, isQtarget)
+    formattedOpts._legacyName = name
+
     return exports['ak47_target']:addBoxZone({
-        name = name, coords = center, size = vector3(width, length, 2.0),
+        name = name,
+        coords = center,
+        size = vec3(width, length, (options.useZ or not options.maxZ) and center.z or math.abs(options.maxZ - options.minZ)),
         debug = options.debugPoly,
-        options = FormatOptions(targetoptions)
+        rotation = options.heading,
+        options = formattedOpts,
     })
 end)
 
-ExportHandler('AddPolyZone', function(name, points, options, targetoptions)
+ExportHandler('AddPolyZone', function(isQtarget, name, points, options, targetoptions)
     local newPoints = {}
-    local thickness = math.abs((options.maxZ or 10.0) - (options.minZ or -10.0))
+    
+    if not options.minZ then options.minZ = -100 end
+    if not options.maxZ then options.maxZ = 800 end
+    local thickness = math.abs(options.maxZ - options.minZ)
 
     for i = 1, #points do
-        table.insert(newPoints, vector3(points[i].x, points[i].y, options.maxZ and (options.maxZ - (thickness / 2)) or 0.0))
+        local point = points[i]
+        table.insert(newPoints, vec3(point.x, point.y, options.maxZ - (thickness / 2)))
     end
+
+    local formattedOpts = FormatOptions(targetoptions, isQtarget)
+    formattedOpts._legacyName = name 
 
     return exports['ak47_target']:addPolyZone({
         name = name,
         points = newPoints,
         thickness = thickness,
-        minZ = options.minZ,
-        maxZ = options.maxZ,
         debug = options.debugPoly,
-        options = FormatOptions(targetoptions),
+        options = formattedOpts,
     })
 end)
 
-ExportHandler('AddCircleZone', function(name, center, radius, options, targetoptions)
+ExportHandler('AddCircleZone', function(isQtarget, name, center, radius, options, targetoptions)
+    local formattedOpts = FormatOptions(targetoptions, isQtarget)
+    formattedOpts._legacyName = name 
+
     return exports['ak47_target']:addSphereZone({
         name = name,
         coords = center,
         radius = radius,
         debug = options.debugPoly,
-        options = FormatOptions(targetoptions),
+        options = formattedOpts,
     })
 end)
 
-ExportHandler('RemoveZone', function(id) 
-    exports['ak47_target']:removeZone(id) 
+ExportHandler('RemoveZone', function(isQtarget, id) 
+    if type(id) == 'number' then
+        exports['ak47_target']:removeZone(id)
+        return
+    end
+
+    if TargetAPI and TargetAPI.Zones then
+        for zoneId, zone in pairs(TargetAPI.Zones) do
+            if zone.options and zone.options[1] and zone.options[1]._legacyName == id then
+                exports['ak47_target']:removeZone(zoneId)
+            end
+        end
+    end
 end)
 
 -- =================================================================
 -- 3. GLOBAL ENTITY COMPATIBILITY EXPORTS
 -- =================================================================
 
--- Additions
-ExportHandler('AddGlobalPed', function(options) exports['ak47_target']:addGlobalPed(FormatOptions(options)) end)
-ExportHandler('AddGlobalVehicle', function(options) exports['ak47_target']:addGlobalVehicle(FormatOptions(options)) end)
-ExportHandler('AddGlobalObject', function(options) exports['ak47_target']:addGlobalObject(FormatOptions(options)) end)
-ExportHandler('AddGlobalPlayer', function(options) exports['ak47_target']:addGlobalPlayer(FormatOptions(options)) end)
+ExportHandler('AddGlobalPed', function(isQtarget, options) exports['ak47_target']:addGlobalPed(FormatOptions(options, isQtarget)) end)
+ExportHandler('AddGlobalVehicle', function(isQtarget, options) exports['ak47_target']:addGlobalVehicle(FormatOptions(options, isQtarget)) end)
+ExportHandler('AddGlobalObject', function(isQtarget, options) exports['ak47_target']:addGlobalObject(FormatOptions(options, isQtarget)) end)
+ExportHandler('AddGlobalPlayer', function(isQtarget, options) exports['ak47_target']:addGlobalPlayer(FormatOptions(options, isQtarget)) end)
 
--- qtarget specific legacy aliases
-ExportHandler('Ped', function(options) exports['ak47_target']:addGlobalPed(FormatOptions(options)) end)
-ExportHandler('Vehicle', function(options) exports['ak47_target']:addGlobalVehicle(FormatOptions(options)) end)
-ExportHandler('Object', function(options) exports['ak47_target']:addGlobalObject(FormatOptions(options)) end)
-ExportHandler('Player', function(options) exports['ak47_target']:addGlobalPlayer(FormatOptions(options)) end)
+ExportHandler('Ped', function(isQtarget, options) exports['ak47_target']:addGlobalPed(FormatOptions(options, isQtarget)) end)
+ExportHandler('Vehicle', function(isQtarget, options) exports['ak47_target']:addGlobalVehicle(FormatOptions(options, isQtarget)) end)
+ExportHandler('Object', function(isQtarget, options) exports['ak47_target']:addGlobalObject(FormatOptions(options, isQtarget)) end)
+ExportHandler('Player', function(isQtarget, options) exports['ak47_target']:addGlobalPlayer(FormatOptions(options, isQtarget)) end)
 
--- Removals
-ExportHandler('RemovePed', function(labels) exports['ak47_target']:removeGlobalPed(labels) end)
-ExportHandler('RemoveVehicle', function(labels) exports['ak47_target']:removeGlobalVehicle(labels) end)
-ExportHandler('RemoveObject', function(labels) exports['ak47_target']:removeGlobalObject(labels) end)
-ExportHandler('RemovePlayer', function(labels) exports['ak47_target']:removeGlobalPlayer(labels) end)
+ExportHandler('RemoveGlobalPed', function(isQtarget, labels) exports['ak47_target']:removeGlobalPed(labels) end)
+ExportHandler('RemoveGlobalVehicle', function(isQtarget, labels) exports['ak47_target']:removeGlobalVehicle(labels) end)
+ExportHandler('RemoveGlobalObject', function(isQtarget, labels) exports['ak47_target']:removeGlobalObject(labels) end)
+ExportHandler('RemoveGlobalPlayer', function(isQtarget, labels) exports['ak47_target']:removeGlobalPlayer(labels) end)
+
+ExportHandler('RemovePed', function(isQtarget, labels) exports['ak47_target']:removeGlobalPed(labels) end)
+ExportHandler('RemoveVehicle', function(isQtarget, labels) exports['ak47_target']:removeGlobalVehicle(labels) end)
+ExportHandler('RemoveObject', function(isQtarget, labels) exports['ak47_target']:removeGlobalObject(labels) end)
+ExportHandler('RemovePlayer', function(isQtarget, labels) exports['ak47_target']:removeGlobalPlayer(labels) end)
 
 -- =================================================================
 -- 4. SPECIFIC ENTITY & MODEL COMPATIBILITY EXPORTS
 -- =================================================================
 
-ExportHandler('AddTargetModel', function(models, options)
-    exports['ak47_target']:addModel(models, FormatOptions(options))
+ExportHandler('AddTargetModel', function(isQtarget, models, options)
+    exports['ak47_target']:addModel(models, FormatOptions(options, isQtarget))
 end)
 
-ExportHandler('RemoveTargetModel', function(models, labels)
+ExportHandler('RemoveTargetModel', function(isQtarget, models, labels)
     exports['ak47_target']:removeModel(models, labels)
 end)
 
-ExportHandler('AddTargetEntity', function(entities, options)
-    exports['ak47_target']:addLocalEntity(entities, FormatOptions(options))
+ExportHandler('AddTargetEntity', function(isQtarget, entities, options)
+    if type(entities) ~= 'table' then entities = { entities } end
+    local formattedOpts = FormatOptions(options, isQtarget)
+
+    for i = 1, #entities do
+        local entity = entities[i]
+        if NetworkGetEntityIsNetworked(entity) then
+            exports['ak47_target']:addEntity(NetworkGetNetworkIdFromEntity(entity), formattedOpts)
+        else
+            exports['ak47_target']:addLocalEntity(entity, formattedOpts)
+        end
+    end
 end)
 
-ExportHandler('RemoveTargetEntity', function(entities, labels)
+ExportHandler('RemoveTargetEntity', function(isQtarget, entities, labels)
     if type(entities) ~= 'table' then entities = { entities } end
-    for _, entity in ipairs(entities) do
+
+    for i = 1, #entities do
+        local entity = entities[i]
         if NetworkGetEntityIsNetworked(entity) then
             exports['ak47_target']:removeEntity(NetworkGetNetworkIdFromEntity(entity), labels)
         else
@@ -132,26 +275,28 @@ ExportHandler('RemoveTargetEntity', function(entities, labels)
     end
 end)
 
-ExportHandler('AddTargetBone', function(bones, options)
+ExportHandler('AddTargetBone', function(isQtarget, bones, options)
     if type(bones) ~= 'table' then bones = { bones } end
-    local formattedOptions = FormatOptions(options)
+    local formattedOptions = FormatOptions(options, isQtarget)
 
-    for _, v in ipairs(formattedOptions) do
+    for _, v in pairs(formattedOptions) do
         v.bones = bones
     end
 
     exports['ak47_target']:addGlobalVehicle(formattedOptions)
 end)
 
-ExportHandler('RemoveTargetBone', function()
-    
-end)
-
 -- =================================================================
 -- 5. DEPRECATED / REDIRECTED EXPORTS
 -- =================================================================
 
-ExportHandler('AddEntityZone', function(name, entity, options, targetoptions)
+ExportHandler('AddEntityZone', function(isQtarget, name, entity, options, targetoptions)
     print("^3[ak47_target] Warning: AddEntityZone is deprecated. Re-routing to AddTargetEntity.^0")
-    exports['ak47_target']:addLocalEntity(entity, FormatOptions(targetoptions))
+    exports['ak47_target']:addLocalEntity(entity, FormatOptions(targetoptions, isQtarget))
+end)
+
+ExportHandler('RemoveTargetBone', function(isQtarget, bones, labels)
+    print("^3[ak47_target] Warning: RemoveTargetBone is not fully supported, rerouting to removeGlobalVehicle.^0")
+    if type(labels) ~= 'table' then labels = { labels } end
+    exports['ak47_target']:removeGlobalVehicle(labels)
 end)

@@ -20,17 +20,40 @@ local isDisabled = false
 -- 2. INTERNAL HELPER FUNCTIONS
 -- =================================================================
 
+local function typeError(variable, expected, received)
+    error(("^1[ak47_target] Expected %s to have type '%s' (received %s)^0"):format(variable, expected, received))
+end
+
+---Checks options and throws an error or corrects type mismatch
+---@param options table
+---@return table
+local function checkOptions(options)
+    local optionsType = type(options)
+    if optionsType ~= 'table' then
+        typeError('options', 'table', optionsType)
+    end
+
+    -- Check if it's a single option hashmap instead of an array
+    if options.label or options.name or options.icon or options.onSelect or options.action then
+        options = { options }
+    end
+
+    return options
+end
+
 ---@param tbl table The target table to add to
 ---@param options table|table[] The option or list of options to add
 local function AddTargetToTable(tbl, options)
-    if type(options) ~= 'table' then return end
-    if options.label or options.name then options = {options} end
-    
-    -- Tracks which resource added the option for cleanup on stop
+    options = checkOptions(options)
     local resource = GetInvokingResource() or "ak47_target"
 
     for _, opt in ipairs(options) do
+        opt.distance = opt.distance or 7.0 -- ox_target standard default
+        opt.label = opt.label or "Interact"
+        opt.icon = opt.icon or "fas fa-hand-pointer"
+        opt.name = opt.name or (tostring(opt.label):gsub("%s+", "_"):lower() .. "_" .. math.random(10000, 99999))
         opt.resource = resource
+
         table.insert(tbl, opt)
     end
 end
@@ -81,7 +104,9 @@ ExportHandler('addGlobalOption', addGlobalOption)
 -- =================================================================
 
 local function addModel(models, options)
+    if not models or not options then return print("^1[ak47_target] Error: addModel is missing models or options.^0") end
     if type(models) ~= 'table' then models = {models} end
+    
     for _, model in ipairs(models) do
         local hash = type(model) == 'string' and joaat(model) or model
         if not TargetAPI.Models[hash] then TargetAPI.Models[hash] = {} end
@@ -92,7 +117,9 @@ exports('addModel', addModel)
 ExportHandler('addModel', addModel)
 
 local function addEntity(netIds, options)
+    if not netIds or not options then return print("^1[ak47_target] Error: addEntity is missing netIds or options.^0") end
     if type(netIds) ~= 'table' then netIds = {netIds} end
+    
     for _, netId in ipairs(netIds) do
         if NetworkDoesNetworkIdExist(netId) then
             if not TargetAPI.Entities[netId] then 
@@ -111,7 +138,9 @@ exports('addEntity', addEntity)
 ExportHandler('addEntity', addEntity)
 
 local function addLocalEntity(entityIds, options)
+    if not entityIds or not options then return print("^1[ak47_target] Error: addLocalEntity is missing entityIds or options.^0") end
     if type(entityIds) ~= 'table' then entityIds = {entityIds} end
+    
     for _, ent in ipairs(entityIds) do
         if not TargetAPI.LocalEntities[ent] then TargetAPI.LocalEntities[ent] = {} end
         AddTargetToTable(TargetAPI.LocalEntities[ent], options)
@@ -227,19 +256,66 @@ ExportHandler('getTargetOptions', getTargetOptions)
 -- =================================================================
 
 local function addSphereZone(data)
-    if not data.options then data.options = {data} end 
+    if type(data) ~= 'table' then return print("^1[ak47_target] Error: addSphereZone requires a data table.^0") end
+    if type(data.coords) ~= 'vector3' then return print("^1[ak47_target] Error: addSphereZone requires 'coords' to be a vector3.^0") end
+    
+    data.radius = data.radius or 2.0
+    
+    if not data.options then 
+        local opt = {}
+        for k, v in pairs(data) do
+            if k ~= 'coords' and k ~= 'radius' and k ~= 'debug' and k ~= 'name' then 
+                opt[k] = v 
+            end
+        end
+        data.options = {opt} 
+    end 
+    
     return createZone('sphere', data.coords, data.options, { radius = data.radius, debug = data.debug })
 end
 exports('addSphereZone', addSphereZone)
 ExportHandler('addSphereZone', addSphereZone)
 
 local function addBoxZone(data)
-    return createZone('box', data.coords, data.options, { size = data.size, rotation = data.rotation or 0.0, debug = data.debug })
+    if type(data) ~= 'table' then return print("^1[ak47_target] Error: addBoxZone requires a data table.^0") end
+    if type(data.coords) ~= 'vector3' then return print("^1[ak47_target] Error: addBoxZone requires 'coords' to be a vector3.^0") end
+    
+    data.size = type(data.size) == 'vector3' and data.size or vector3(2.0, 2.0, 2.0)
+    data.rotation = data.rotation or 0.0
+    
+    if not data.options then 
+        local opt = {}
+        for k, v in pairs(data) do
+            if k ~= 'coords' and k ~= 'size' and k ~= 'rotation' and k ~= 'debug' and k ~= 'name' then 
+                opt[k] = v 
+            end
+        end
+        data.options = {opt} 
+    end
+    
+    return createZone('box', data.coords, data.options, { size = data.size, rotation = data.rotation, debug = data.debug })
 end
 exports('addBoxZone', addBoxZone)
 ExportHandler('addBoxZone', addBoxZone)
 
 local function addPolyZone(data)
+    if type(data) ~= 'table' then return print("^1[ak47_target] Error: addPolyZone requires a data table.^0") end
+    if type(data.points) ~= 'table' or #data.points < 3 then 
+        return print("^1[ak47_target] Error: addPolyZone requires a 'points' table with at least 3 points.^0") 
+    end
+    
+    data.thickness = data.thickness or 2.0
+    
+    if not data.options then 
+        local opt = {}
+        for k, v in pairs(data) do
+            if k ~= 'points' and k ~= 'thickness' and k ~= 'minZ' and k ~= 'maxZ' and k ~= 'debug' and k ~= 'name' then 
+                opt[k] = v 
+            end
+        end
+        data.options = {opt} 
+    end
+    
     return createZone('poly', nil, data.options, { points = data.points, thickness = data.thickness, minZ = data.minZ, maxZ = data.maxZ, debug = data.debug })
 end
 exports('addPolyZone', addPolyZone)

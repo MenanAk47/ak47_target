@@ -75,7 +75,7 @@ local function StartDebugThread()
 end
 
 -- ==========================================
--- ZONE MATHEMATICS (Unchanged)
+-- ZONE MATHEMATICS
 -- ==========================================
 local function isPointInPolygon(point, polygon)
     local oddNodes, j = false, #polygon
@@ -98,11 +98,15 @@ end
 
 function createZone(zoneType, coords, options, customData)
     zoneIdCounter = zoneIdCounter + 1
-    local id = "zone_"..zoneIdCounter
+    local id = zoneIdCounter -- Return strictly numeric IDs matching ox_target requirements
+    
     TargetAPI.Zones[id] = {
-        id = id, type = zoneType, coords = coords, options = options,
+        id = id, 
+        type = zoneType, 
+        coords = coords, 
+        options = options,
         data = customData, 
-        debug = customData.debug, -- New: Stores the debug flag
+        debug = customData.debug, 
         resource = GetInvokingResource() or "ak47_target"
     }
     
@@ -114,15 +118,26 @@ function GetNearbyZones(playerCoords)
     local active = {}
     for id, zone in pairs(TargetAPI.Zones) do
         if zone.type == 'sphere' then
-            if #(playerCoords - zone.coords) <= zone.data.radius then table.insert(active, zone) end
+            local radius = zone.data.radius or 2.0 
+            if #(playerCoords - zone.coords) <= radius then table.insert(active, zone) end
+            
         elseif zone.type == 'box' then
-            local zDiff = math.abs(playerCoords.z - zone.coords.z)
-            if zDiff <= (zone.data.size.z or 2.0) and isPointInBox(playerCoords, zone.coords, zone.data.size, zone.data.rotation) then table.insert(active, zone) end
+            if zone.data.size then
+                local zDiff = math.abs(playerCoords.z - zone.coords.z)
+                if zDiff <= ((zone.data.size.z or 2.0) / 2) and isPointInBox(playerCoords, zone.coords, zone.data.size, zone.data.rotation or 0.0) then 
+                    table.insert(active, zone) 
+                end
+            else
+                print("^1[ak47_target] ERROR: A box zone is missing its 'size' parameter. Check resource: " .. tostring(zone.resource) .. "^0")
+            end
+            
         elseif zone.type == 'poly' then
             local zValid = true
             if zone.data.minZ and playerCoords.z < zone.data.minZ then zValid = false end
             if zone.data.maxZ and playerCoords.z > zone.data.maxZ then zValid = false end
-            if zValid and zone.data.points and #zone.data.points >= 3 and isPointInPolygon(playerCoords, zone.data.points) then table.insert(active, zone) end
+            if zValid and zone.data.points and #zone.data.points >= 3 and isPointInPolygon(playerCoords, zone.data.points) then 
+                table.insert(active, zone) 
+            end
         end
     end
     return active
