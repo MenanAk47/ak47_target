@@ -40,29 +40,32 @@ RegisterNetEvent('ak47_target:client:toggleEntityDoor', function(netId, door)
     toggleDoor(entity, door)
 end)
 
-exports['ak47_target']:addGlobalVehicle({
-    {
-        name = 'ak47_target:driverF', icon = 'fas fa-car-side', label = 'Toggle Driver Door',
-        bones = { 'door_dside_f', 'seat_dside_f' }, distance = 2.0,
-        canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 0) end,
-        onSelect = function(data) onSelectDoor(data, 0) end
-    },
-    {
-        name = 'ak47_target:passengerF', icon = 'fas fa-car-side', label = 'Toggle Passenger Door',
-        bones = { 'door_pside_f', 'seat_pside_f' }, distance = 2.0,
-        canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 1) end,
-        onSelect = function(data) onSelectDoor(data, 1) end
-    },
-    {
-        name = 'ak47_target:bonnet', icon = 'fas fa-car', label = 'Toggle Hood',
-        offset = vector3(0.5, 1.0, 0.5), distance = 2.0,
-        canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 4, true) end,
-        onSelect = function(data) onSelectDoor(data, 4) end
-    },
-    {
-        name = 'ak47_target:trunk', icon = 'fas fa-truck-pickup', label = 'Toggle Trunk',
-        offset = vector3(0.5, 0.0, 0.5), distance = 2.0,
-        canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 5, true) end,
-        onSelect = function(data) onSelectDoor(data, 5) end
-    }
-})
+CreateThread(function()
+    exports['ak47_target']:addGlobalVehicle({
+        {
+            name = 'ak47_target:driverF', icon = 'fas fa-car-side', label = 'Toggle Driver Door',
+            bones = { 'door_dside_f', 'seat_dside_f' }, distance = 2.0,
+            canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 0) end,
+            onSelect = function(data) onSelectDoor(data, 0) end
+        },
+        {
+            name = 'ak47_target:passengerF', icon = 'fas fa-car-side', label = 'Toggle Passenger Door',
+            bones = { 'door_pside_f', 'seat_pside_f' }, distance = 2.0,
+            canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 1) end,
+            onSelect = function(data) onSelectDoor(data, 1) end
+        },
+        {
+            name = 'ak47_target:bonnet', icon = 'fas fa-car', label = 'Toggle Hood',
+            offset = vector3(0.5, 1.0, 0.5), distance = 2.0,
+            canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 4, true) end,
+            onSelect = function(data) onSelectDoor(data, 4) end
+        },
+        {
+            name = 'ak47_target:trunk', icon = 'fas fa-truck-pickup', label = 'Toggle Trunk',
+            offset = vector3(0.5, 0.0, 0.5), distance = 2.0,
+            canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 5, true) end,
+            onSelect = function(data) onSelectDoor(data, 5) end
+        }
+    })
+end)
+

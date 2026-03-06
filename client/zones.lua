@@ -5,30 +5,29 @@ local isDebugging = false
 -- 3D VISUAL DEBUG RENDERERS
 -- ==========================================
 local function DrawSphereDebug(coords, radius)
-    DrawMarker(28, coords.x, coords.y, coords.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, radius*2, radius*2, radius*2, 0, 200, 255, 50, false, false, 2, false, nil, nil, false)
+    DrawMarker(28, coords.x, coords.y, coords.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, radius * 2, radius * 2, radius * 2, 0, 200, 255, 50, false, false, 2, false, nil, nil, false)
 end
 
 local function DrawBoxDebug(coords, size, rotation)
     local w, l, h = size.x / 2, size.y / 2, (size.z or 2.0) / 2
     local rad = math.rad(-rotation)
     local cosRot, sinRot = math.cos(rad), math.sin(rad)
-    
+
     local function getPoint(dx, dy, dz)
         local rx, ry = dx * cosRot - dy * sinRot, dx * sinRot + dy * cosRot
         return vector3(coords.x + rx, coords.y + ry, coords.z + dz)
     end
-    
+
     local p = {
         getPoint(-w, -l, -h), getPoint(w, -l, -h), getPoint(w, l, -h), getPoint(-w, l, -h),
-        getPoint(-w, -l, h), getPoint(w, -l, h), getPoint(w, l, h), getPoint(-w, l, h)
-    }
-    
+    getPoint(-w, -l, h), getPoint(w, -l, h), getPoint(w, l, h), getPoint(-w, l, h)}
+
     local r, g, b = 255, 0, 0
     -- Bottom & Top Lines
-    for i=1, 4 do 
-        DrawLine(p[i], p[i%4+1], r,g,b, 255) 
-        DrawLine(p[i+4], p[(i%4)+5], r,g,b, 255) 
-        DrawLine(p[i], p[i+4], r,g,b, 255) -- Pillars
+    for i = 1, 4 do
+        DrawLine(p[i], p[i % 4 + 1], r, g, b, 255)
+        DrawLine(p[i + 4], p[(i % 4) + 5], r, g, b, 255)
+        DrawLine(p[i], p[i + 4], r, g, b, 255) -- Pillars
     end
 end
 
@@ -36,15 +35,15 @@ local function DrawPolyDebug(points, minZ, maxZ)
     local r, g, b = 0, 255, 0
     local z1 = minZ or (points[1].z - 2.0)
     local z2 = maxZ or (points[1].z + 2.0)
-    
+
     for i = 1, #points do
         local nextI = (i % #points) + 1
         local b1, b2 = vector3(points[i].x, points[i].y, z1), vector3(points[nextI].x, points[nextI].y, z1)
         local t1, t2 = vector3(points[i].x, points[i].y, z2), vector3(points[nextI].x, points[nextI].y, z2)
-        
-        DrawLine(b1, b2, r,g,b, 255) -- Bottom
-        DrawLine(t1, t2, r,g,b, 255) -- Top
-        DrawLine(b1, t1, r,g,b, 255) -- Pillars
+
+        DrawLine(b1, b2, r, g, b, 255) -- Bottom
+        DrawLine(t1, t2, r, g, b, 255) -- Top
+        DrawLine(b1, t1, r, g, b, 255) -- Pillars
     end
 end
 
@@ -56,11 +55,10 @@ local function StartDebugThread()
             Wait(0)
             local hasActive = false
             local plyCoords = GetEntityCoords(PlayerPedId())
-            
+
             for _, zone in pairs(TargetAPI.Zones) do
                 if zone.debug then
                     hasActive = true
-                    -- Optimization: Only draw if within 50 units
                     local checkCoord = zone.type == 'poly' and zone.data.points[1] or zone.coords
                     if #(plyCoords - checkCoord) < 50.0 then
                         if zone.type == 'box' then DrawBoxDebug(zone.coords, zone.data.size, zone.data.rotation)
@@ -69,7 +67,7 @@ local function StartDebugThread()
                     end
                 end
             end
-            if not hasActive then isDebugging = false end -- Sleep thread if no debug zones exist
+            if not hasActive then isDebugging = false end
         end
     end)
 end
@@ -98,18 +96,18 @@ end
 
 function createZone(zoneType, coords, options, customData)
     zoneIdCounter = zoneIdCounter + 1
-    local id = zoneIdCounter -- Return strictly numeric IDs matching ox_target requirements
-    
+    local id = zoneIdCounter
+
     TargetAPI.Zones[id] = {
-        id = id, 
-        type = zoneType, 
-        coords = coords, 
+        id = id,
+        type = zoneType,
+        coords = coords,
         options = options,
-        data = customData, 
-        debug = customData.debug, 
-        resource = GetInvokingResource() or "ak47_target"
+        data = customData,
+        debug = customData.debug,
+        resource = customData.resource or GetInvokingResource() or "ak47_target"
     }
-    
+
     if customData.debug then StartDebugThread() end
     return id
 end
@@ -118,27 +116,61 @@ function GetNearbyZones(playerCoords)
     local active = {}
     for id, zone in pairs(TargetAPI.Zones) do
         if zone.type == 'sphere' then
-            local radius = zone.data.radius or 2.0 
+            local radius = zone.data.radius or 2.0
             if #(playerCoords - zone.coords) <= radius then table.insert(active, zone) end
-            
+
         elseif zone.type == 'box' then
             if zone.data.size then
                 local zDiff = math.abs(playerCoords.z - zone.coords.z)
-                if zDiff <= ((zone.data.size.z or 2.0) / 2) and isPointInBox(playerCoords, zone.coords, zone.data.size, zone.data.rotation or 0.0) then 
-                    table.insert(active, zone) 
+                if zDiff <= ((zone.data.size.z or 2.0) / 2) and isPointInBox(playerCoords, zone.coords, zone.data.size, zone.data.rotation or 0.0) then
+                    table.insert(active, zone)
                 end
             else
                 print("^1[ak47_target] ERROR: A box zone is missing its 'size' parameter. Check resource: " .. tostring(zone.resource) .. "^0")
             end
-            
+
         elseif zone.type == 'poly' then
             local zValid = true
             if zone.data.minZ and playerCoords.z < zone.data.minZ then zValid = false end
             if zone.data.maxZ and playerCoords.z > zone.data.maxZ then zValid = false end
-            if zValid and zone.data.points and #zone.data.points >= 3 and isPointInPolygon(playerCoords, zone.data.points) then 
-                table.insert(active, zone) 
+            if zValid and zone.data.points and #zone.data.points >= 3 and isPointInPolygon(playerCoords, zone.data.points) then
+                table.insert(active, zone)
             end
         end
     end
     return active
+end
+
+function DrawZoneSprites(dict, texture, playerCoords, hoveredZones)
+    local drawn = 0
+    local width = 0.02
+    local height = width * GetAspectRatio(false)
+    local normalColour = vector4(155, 155, 155, 175)
+    local hoverColour = vector4(98, 135, 236, 255)
+
+    local hoveredSet = {}
+    if hoveredZones then
+        for _, z in ipairs(hoveredZones) do
+            hoveredSet[z.id] = true
+        end
+    end
+
+    for id, zone in pairs(TargetAPI.Zones) do
+        if zone.data.drawSprite ~= false then
+            local renderCoords = zone.coords
+            if zone.type == 'poly' and zone.data.points and zone.data.points[1] then
+                renderCoords = zone.data.points[1]
+            end
+
+            if renderCoords and #(playerCoords - renderCoords) < 10.0 then
+                local color = hoveredSet[id] and hoverColour or normalColour
+                SetDrawOrigin(renderCoords.x, renderCoords.y, renderCoords.z)
+                DrawSprite(dict, texture, 0, 0, width, height, 0, math.floor(color.x), math.floor(color.y), math.floor(color.z), math.floor(color.w))
+                
+                drawn = drawn + 1
+                if drawn >= 24 then break end
+            end
+        end
+    end
+    if drawn > 0 then ClearDrawOrigin() end
 end

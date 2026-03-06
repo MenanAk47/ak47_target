@@ -165,6 +165,8 @@ local function StartTargeting()
         local flag = 511
         local lastPayloadCount = 0
 
+        RequestStreamedTextureDict('shared', false)
+
         while isTargeting do
             if IsPauseMenuActive() then
                 StopTargeting()
@@ -198,6 +200,10 @@ local function StartTargeting()
 
                 local model = (entityHit > 0 and entityType > 0) and GetEntityModel(entityHit) or nil
                 
+                if HasStreamedTextureDictLoaded('shared') then
+                    DrawZoneSprites('shared', 'emptydot_32', playerCoords, GetNearbyZones(endCoords))
+                end
+
                 local payload = GenerateMenuPayload(entityHit, entityType, model, distance, endCoords)
                 local isValid = #payload > 0
 
@@ -287,8 +293,10 @@ local function StartTargeting()
                 flag = flag == 511 and 26 or 511
             end
 
-            Wait(hit and 1 or 100)
+            Wait(hit and 1 or 100) 
         end
+        
+        SetStreamedTextureDictAsNoLongerNeeded('shared')
     end)
 end
 

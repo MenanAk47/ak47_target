@@ -33,7 +33,6 @@ local function checkOptions(options)
         typeError('options', 'table', optionsType)
     end
 
-    -- Check if it's a single option hashmap instead of an array
     if options.label or options.name or options.icon or options.onSelect or options.action then
         options = { options }
     end
@@ -48,11 +47,11 @@ local function AddTargetToTable(tbl, options)
     local resource = GetInvokingResource() or "ak47_target"
 
     for _, opt in ipairs(options) do
-        opt.distance = opt.distance or 7.0 -- ox_target standard default
+        opt.distance = opt.distance or 7.0
         opt.label = opt.label or "Interact"
         opt.icon = opt.icon or "fas fa-hand-pointer"
         opt.name = opt.name or (tostring(opt.label):gsub("%s+", "_"):lower() .. "_" .. math.random(10000, 99999))
-        opt.resource = resource
+        opt.resource = opt.resource or resource
 
         table.insert(tbl, opt)
     end
@@ -271,14 +270,14 @@ local function addSphereZone(data)
     if not data.options then 
         local opt = {}
         for k, v in pairs(data) do
-            if k ~= 'coords' and k ~= 'radius' and k ~= 'debug' and k ~= 'name' then 
+            if k ~= 'coords' and k ~= 'radius' and k ~= 'debug' and k ~= 'name' and k ~= 'drawSprite' then 
                 opt[k] = v 
             end
         end
         data.options = {opt} 
     end 
     
-    return createZone('sphere', data.coords, data.options, { radius = data.radius, debug = data.debug })
+    return createZone('sphere', data.coords, data.options, { radius = data.radius, debug = data.debug, resource = data.resource, drawSprite = data.drawSprite })
 end
 exports('addSphereZone', addSphereZone)
 ExportHandler('addSphereZone', addSphereZone)
@@ -293,14 +292,14 @@ local function addBoxZone(data)
     if not data.options then 
         local opt = {}
         for k, v in pairs(data) do
-            if k ~= 'coords' and k ~= 'size' and k ~= 'rotation' and k ~= 'debug' and k ~= 'name' then 
+            if k ~= 'coords' and k ~= 'size' and k ~= 'rotation' and k ~= 'debug' and k ~= 'name' and k ~= 'drawSprite' then 
                 opt[k] = v 
             end
         end
         data.options = {opt} 
     end
     
-    return createZone('box', data.coords, data.options, { size = data.size, rotation = data.rotation, debug = data.debug })
+    return createZone('box', data.coords, data.options, { size = data.size, rotation = data.rotation, debug = data.debug, resource = data.resource, drawSprite = data.drawSprite })
 end
 exports('addBoxZone', addBoxZone)
 ExportHandler('addBoxZone', addBoxZone)
@@ -316,14 +315,14 @@ local function addPolyZone(data)
     if not data.options then 
         local opt = {}
         for k, v in pairs(data) do
-            if k ~= 'points' and k ~= 'thickness' and k ~= 'minZ' and k ~= 'maxZ' and k ~= 'debug' and k ~= 'name' then 
+            if k ~= 'points' and k ~= 'thickness' and k ~= 'minZ' and k ~= 'maxZ' and k ~= 'debug' and k ~= 'name' and k ~= 'drawSprite' then 
                 opt[k] = v 
             end
         end
         data.options = {opt} 
     end
     
-    return createZone('poly', nil, data.options, { points = data.points, thickness = data.thickness, minZ = data.minZ, maxZ = data.maxZ, debug = data.debug })
+    return createZone('poly', nil, data.options, { points = data.points, thickness = data.thickness, minZ = data.minZ, maxZ = data.maxZ, debug = data.debug, resource = data.resource, drawSprite = data.drawSprite })
 end
 exports('addPolyZone', addPolyZone)
 ExportHandler('addPolyZone', addPolyZone)

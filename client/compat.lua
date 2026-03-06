@@ -4,14 +4,14 @@
 
 ---@param options table The raw options passed from legacy scripts
 ---@param isQtarget boolean True if the export was called via qtarget, false if qb-target
+---@param invokingResource string The resource that called the export
 ---@return table formatted The options converted to the new format
-local function FormatOptions(options, isQtarget)
+local function FormatOptions(options, isQtarget, invokingResource)
     local distance = options.distance
     local targetOptions = options.options or options
 
     if type(targetOptions) ~= 'table' then return {} end
 
-    -- SAFE Hash-map to Array Conversion (Prevents Lua infinite loops)
     local numericOptions = {}
     for k, v in pairs(targetOptions) do
         table.insert(numericOptions, v)
@@ -113,6 +113,7 @@ local function FormatOptions(options, isQtarget)
         v.required_item = nil
         
         -- Flag for main.lua payload routing (Sends entity directly instead of response table)
+        v.resource = invokingResource
         v.qtarget = true
 
         ::continue::
@@ -125,10 +126,10 @@ end
 ---@param func function The function to execute
 local function ExportHandler(exportName, func)
     AddEventHandler(('__cfx_export_qb-target_%s'):format(exportName), function(setCB) 
-        setCB(function(...) return func(false, ...) end) 
+        setCB(function(...) return func(false, GetInvokingResource(), ...) end) 
     end)
     AddEventHandler(('__cfx_export_qtarget_%s'):format(exportName), function(setCB) 
-        setCB(function(...) return func(true, ...) end) 
+        setCB(function(...) return func(true, GetInvokingResource(), ...) end) 
     end)
 end
 
@@ -136,7 +137,7 @@ end
 -- 2. ZONE COMPATIBILITY EXPORTS
 -- =================================================================
 
-ExportHandler('AddBoxZone', function(isQtarget, name, center, length, width, options, targetoptions)
+ExportHandler('AddBoxZone', function(isQtarget, invokingResource, name, center, length, width, options, targetoptions)
     local z = center.z
 
     if not options.minZ then options.minZ = -100 end
@@ -147,7 +148,7 @@ ExportHandler('AddBoxZone', function(isQtarget, name, center, length, width, opt
         center = vec3(center.x, center.y, z)
     end
 
-    local formattedOpts = FormatOptions(targetoptions, isQtarget)
+    local formattedOpts = FormatOptions(targetoptions, isQtarget, invokingResource)
     formattedOpts._legacyName = name
 
     return exports['ak47_target']:addBoxZone({
@@ -157,10 +158,11 @@ ExportHandler('AddBoxZone', function(isQtarget, name, center, length, width, opt
         debug = options.debugPoly,
         rotation = options.heading,
         options = formattedOpts,
+        resource = invokingResource
     })
 end)
 
-ExportHandler('AddPolyZone', function(isQtarget, name, points, options, targetoptions)
+ExportHandler('AddPolyZone', function(isQtarget, invokingResource, name, points, options, targetoptions)
     local newPoints = {}
     
     if not options.minZ then options.minZ = -100 end
@@ -172,7 +174,7 @@ ExportHandler('AddPolyZone', function(isQtarget, name, points, options, targetop
         table.insert(newPoints, vec3(point.x, point.y, options.maxZ - (thickness / 2)))
     end
 
-    local formattedOpts = FormatOptions(targetoptions, isQtarget)
+    local formattedOpts = FormatOptions(targetoptions, isQtarget, invokingResource)
     formattedOpts._legacyName = name 
 
     return exports['ak47_target']:addPolyZone({
@@ -181,11 +183,12 @@ ExportHandler('AddPolyZone', function(isQtarget, name, points, options, targetop
         thickness = thickness,
         debug = options.debugPoly,
         options = formattedOpts,
+        resource = invokingResource
     })
 end)
 
-ExportHandler('AddCircleZone', function(isQtarget, name, center, radius, options, targetoptions)
-    local formattedOpts = FormatOptions(targetoptions, isQtarget)
+ExportHandler('AddCircleZone', function(isQtarget, invokingResource, name, center, radius, options, targetoptions)
+    local formattedOpts = FormatOptions(targetoptions, isQtarget, invokingResource)
     formattedOpts._legacyName = name 
 
     return exports['ak47_target']:addSphereZone({
@@ -194,10 +197,11 @@ ExportHandler('AddCircleZone', function(isQtarget, name, center, radius, options
         radius = radius,
         debug = options.debugPoly,
         options = formattedOpts,
+        resource = invokingResource
     })
 end)
 
-ExportHandler('RemoveZone', function(isQtarget, id) 
+ExportHandler('RemoveZone', function(isQtarget, invokingResource, id) 
     if type(id) == 'number' then
         exports['ak47_target']:removeZone(id)
         return
@@ -216,41 +220,41 @@ end)
 -- 3. GLOBAL ENTITY COMPATIBILITY EXPORTS
 -- =================================================================
 
-ExportHandler('AddGlobalPed', function(isQtarget, options) exports['ak47_target']:addGlobalPed(FormatOptions(options, isQtarget)) end)
-ExportHandler('AddGlobalVehicle', function(isQtarget, options) exports['ak47_target']:addGlobalVehicle(FormatOptions(options, isQtarget)) end)
-ExportHandler('AddGlobalObject', function(isQtarget, options) exports['ak47_target']:addGlobalObject(FormatOptions(options, isQtarget)) end)
-ExportHandler('AddGlobalPlayer', function(isQtarget, options) exports['ak47_target']:addGlobalPlayer(FormatOptions(options, isQtarget)) end)
+ExportHandler('AddGlobalPed', function(isQtarget, invokingResource, options) exports['ak47_target']:addGlobalPed(FormatOptions(options, isQtarget, invokingResource)) end)
+ExportHandler('AddGlobalVehicle', function(isQtarget, invokingResource, options) exports['ak47_target']:addGlobalVehicle(FormatOptions(options, isQtarget, invokingResource)) end)
+ExportHandler('AddGlobalObject', function(isQtarget, invokingResource, options) exports['ak47_target']:addGlobalObject(FormatOptions(options, isQtarget, invokingResource)) end)
+ExportHandler('AddGlobalPlayer', function(isQtarget, invokingResource, options) exports['ak47_target']:addGlobalPlayer(FormatOptions(options, isQtarget, invokingResource)) end)
 
-ExportHandler('Ped', function(isQtarget, options) exports['ak47_target']:addGlobalPed(FormatOptions(options, isQtarget)) end)
-ExportHandler('Vehicle', function(isQtarget, options) exports['ak47_target']:addGlobalVehicle(FormatOptions(options, isQtarget)) end)
-ExportHandler('Object', function(isQtarget, options) exports['ak47_target']:addGlobalObject(FormatOptions(options, isQtarget)) end)
-ExportHandler('Player', function(isQtarget, options) exports['ak47_target']:addGlobalPlayer(FormatOptions(options, isQtarget)) end)
+ExportHandler('Ped', function(isQtarget, invokingResource, options) exports['ak47_target']:addGlobalPed(FormatOptions(options, isQtarget, invokingResource)) end)
+ExportHandler('Vehicle', function(isQtarget, invokingResource, options) exports['ak47_target']:addGlobalVehicle(FormatOptions(options, isQtarget, invokingResource)) end)
+ExportHandler('Object', function(isQtarget, invokingResource, options) exports['ak47_target']:addGlobalObject(FormatOptions(options, isQtarget, invokingResource)) end)
+ExportHandler('Player', function(isQtarget, invokingResource, options) exports['ak47_target']:addGlobalPlayer(FormatOptions(options, isQtarget, invokingResource)) end)
 
-ExportHandler('RemoveGlobalPed', function(isQtarget, labels) exports['ak47_target']:removeGlobalPed(labels) end)
-ExportHandler('RemoveGlobalVehicle', function(isQtarget, labels) exports['ak47_target']:removeGlobalVehicle(labels) end)
-ExportHandler('RemoveGlobalObject', function(isQtarget, labels) exports['ak47_target']:removeGlobalObject(labels) end)
-ExportHandler('RemoveGlobalPlayer', function(isQtarget, labels) exports['ak47_target']:removeGlobalPlayer(labels) end)
+ExportHandler('RemoveGlobalPed', function(isQtarget, invokingResource, labels) exports['ak47_target']:removeGlobalPed(labels) end)
+ExportHandler('RemoveGlobalVehicle', function(isQtarget, invokingResource, labels) exports['ak47_target']:removeGlobalVehicle(labels) end)
+ExportHandler('RemoveGlobalObject', function(isQtarget, invokingResource, labels) exports['ak47_target']:removeGlobalObject(labels) end)
+ExportHandler('RemoveGlobalPlayer', function(isQtarget, invokingResource, labels) exports['ak47_target']:removeGlobalPlayer(labels) end)
 
-ExportHandler('RemovePed', function(isQtarget, labels) exports['ak47_target']:removeGlobalPed(labels) end)
-ExportHandler('RemoveVehicle', function(isQtarget, labels) exports['ak47_target']:removeGlobalVehicle(labels) end)
-ExportHandler('RemoveObject', function(isQtarget, labels) exports['ak47_target']:removeGlobalObject(labels) end)
-ExportHandler('RemovePlayer', function(isQtarget, labels) exports['ak47_target']:removeGlobalPlayer(labels) end)
+ExportHandler('RemovePed', function(isQtarget, invokingResource, labels) exports['ak47_target']:removeGlobalPed(labels) end)
+ExportHandler('RemoveVehicle', function(isQtarget, invokingResource, labels) exports['ak47_target']:removeGlobalVehicle(labels) end)
+ExportHandler('RemoveObject', function(isQtarget, invokingResource, labels) exports['ak47_target']:removeGlobalObject(labels) end)
+ExportHandler('RemovePlayer', function(isQtarget, invokingResource, labels) exports['ak47_target']:removeGlobalPlayer(labels) end)
 
 -- =================================================================
 -- 4. SPECIFIC ENTITY & MODEL COMPATIBILITY EXPORTS
 -- =================================================================
 
-ExportHandler('AddTargetModel', function(isQtarget, models, options)
-    exports['ak47_target']:addModel(models, FormatOptions(options, isQtarget))
+ExportHandler('AddTargetModel', function(isQtarget, invokingResource, models, options)
+    exports['ak47_target']:addModel(models, FormatOptions(options, isQtarget, invokingResource))
 end)
 
-ExportHandler('RemoveTargetModel', function(isQtarget, models, labels)
+ExportHandler('RemoveTargetModel', function(isQtarget, invokingResource, models, labels)
     exports['ak47_target']:removeModel(models, labels)
 end)
 
-ExportHandler('AddTargetEntity', function(isQtarget, entities, options)
+ExportHandler('AddTargetEntity', function(isQtarget, invokingResource, entities, options)
     if type(entities) ~= 'table' then entities = { entities } end
-    local formattedOpts = FormatOptions(options, isQtarget)
+    local formattedOpts = FormatOptions(options, isQtarget, invokingResource)
 
     for i = 1, #entities do
         local entity = entities[i]
@@ -262,7 +266,7 @@ ExportHandler('AddTargetEntity', function(isQtarget, entities, options)
     end
 end)
 
-ExportHandler('RemoveTargetEntity', function(isQtarget, entities, labels)
+ExportHandler('RemoveTargetEntity', function(isQtarget, invokingResource, entities, labels)
     if type(entities) ~= 'table' then entities = { entities } end
 
     for i = 1, #entities do
@@ -275,9 +279,9 @@ ExportHandler('RemoveTargetEntity', function(isQtarget, entities, labels)
     end
 end)
 
-ExportHandler('AddTargetBone', function(isQtarget, bones, options)
+ExportHandler('AddTargetBone', function(isQtarget, invokingResource, bones, options)
     if type(bones) ~= 'table' then bones = { bones } end
-    local formattedOptions = FormatOptions(options, isQtarget)
+    local formattedOptions = FormatOptions(options, isQtarget, invokingResource)
 
     for _, v in pairs(formattedOptions) do
         v.bones = bones
@@ -290,12 +294,12 @@ end)
 -- 5. DEPRECATED / REDIRECTED EXPORTS
 -- =================================================================
 
-ExportHandler('AddEntityZone', function(isQtarget, name, entity, options, targetoptions)
+ExportHandler('AddEntityZone', function(isQtarget, invokingResource, name, entity, options, targetoptions)
     print("^3[ak47_target] Warning: AddEntityZone is deprecated. Re-routing to AddTargetEntity.^0")
-    exports['ak47_target']:addLocalEntity(entity, FormatOptions(targetoptions, isQtarget))
+    exports['ak47_target']:addLocalEntity(entity, FormatOptions(targetoptions, isQtarget, invokingResource))
 end)
 
-ExportHandler('RemoveTargetBone', function(isQtarget, bones, labels)
+ExportHandler('RemoveTargetBone', function(isQtarget, invokingResource, bones, labels)
     print("^3[ak47_target] Warning: RemoveTargetBone is not fully supported, rerouting to removeGlobalVehicle.^0")
     if type(labels) ~= 'table' then labels = { labels } end
     exports['ak47_target']:removeGlobalVehicle(labels)
