@@ -328,3 +328,40 @@ local function removeZone(id)
 end
 exports('removeZone', removeZone)
 ExportHandler('removeZone', removeZone)
+
+-- =================================================================
+-- 8. RESOURCE STOP CLEANUP (AUTO-REMOVE TARGETS & ZONES)
+-- =================================================================
+
+AddEventHandler('onResourceStop', function(resourceName)
+    local simpleTables = { TargetAPI.Peds, TargetAPI.Vehicles, TargetAPI.Objects, TargetAPI.Players, TargetAPI.Globals }
+    for _, tbl in ipairs(simpleTables) do
+        for i = #tbl, 1, -1 do
+            if tbl[i].resource == resourceName then
+                table.remove(tbl, i)
+            end
+        end
+    end
+
+    local dictTables = { TargetAPI.Models, TargetAPI.Entities, TargetAPI.LocalEntities }
+    for _, dict in ipairs(dictTables) do
+        for key, tbl in pairs(dict) do
+            for i = #tbl, 1, -1 do
+                if tbl[i].resource == resourceName then
+                    table.remove(tbl, i)
+                end
+            end
+            if #tbl == 0 then
+                dict[key] = nil
+            end
+        end
+    end
+
+    if TargetAPI.Zones then
+        for id, zone in pairs(TargetAPI.Zones) do
+            if zone.resource == resourceName then
+                TargetAPI.Zones[id] = nil
+            end
+        end
+    end
+end)

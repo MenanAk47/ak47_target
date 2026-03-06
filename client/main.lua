@@ -5,21 +5,30 @@ local ActiveOptions = {}
 local currentMenu = nil
 local menuHistory = {}
 local lastOutlinedEntity = nil
+local waitingForRelease = false
+local ignoreTargetTime = 0
 
 local function CloseMenu()
     isMenuOpen = false
     currentMenu = nil
     menuHistory = {}
-    SetNuiFocus(false, false)
+    if not Config.HideEyeWhenTargetAvailable then
+        SendNUIMessage({ type = "eye", state = false })
+    end
     SendNUIMessage({ type = "close" })
+    SetNuiFocus(false, false)
     ActiveOptions = {}
     if lastOutlinedEntity then
         SetEntityDrawOutline(lastOutlinedEntity, false)
         lastOutlinedEntity = nil
     end
+    ignoreTargetTime = GetGameTimer() + 100
 end
 
 local function StopTargeting()
+    waitingForRelease = false
+    ignoreTargetTime = 0
+
     if not isMenuOpen then
         isTargeting = false
         SendNUIMessage({ type = "close" })
@@ -128,6 +137,13 @@ local function GenerateMenuPayload(entity, entityType, model, distance, coords)
 end
 
 local function StartTargeting()
+    if waitingForRelease then return end
+    
+    if GetGameTimer() < ignoreTargetTime then
+        waitingForRelease = true
+        return
+    end
+
     if isTargeting or isMenuOpen or exports[GetCurrentResourceName()]:isDisabled() or IsPauseMenuActive() then return end
     isTargeting = true
     SendNUIMessage({ type = "eye", state = true })
@@ -189,12 +205,16 @@ local function StartTargeting()
                     hasTarget = isValid
                     if hasTarget then
                         lastPayloadCount = #payload
-                        SendNUIMessage({ type = "eye", state = false })
+                        if Config.HideEyeWhenTargetAvailable then
+                            SendNUIMessage({ type = "eye", state = false })
+                        end
                         SendNUIMessage({ type = "open", menu = payload })
                     else
                         lastPayloadCount = 0
                         SendNUIMessage({ type = "close" })
-                        SendNUIMessage({ type = "eye", state = true })
+                        if Config.HideEyeWhenTargetAvailable then
+                            SendNUIMessage({ type = "eye", state = true })
+                        end
                     end
                 elseif hasTarget and #payload ~= lastPayloadCount then
                     lastPayloadCount = #payload
@@ -222,6 +242,7 @@ local function StartTargeting()
                     isMenuOpen = true
                     
                     SetCursorLocation(0.5, 0.5)
+                    SendNUIMessage({ type = "focus" })
                     SetNuiFocus(true, true) 
 
                     if currentTarget.entity and currentTarget.entity > 0 then

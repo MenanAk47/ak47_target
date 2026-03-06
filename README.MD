@@ -1,4 +1,4 @@
-![Target](https://i.imgur.com/XxBZWpi.png)
+![Target](https://i.imgur.com/i25zaVv.png)
 
 **ak47_target** is a highly optimized, universally compatible targeting solution for FiveM. Designed to be a completely seamless, drop-in replacement for `ox_target`, `qb-target`, and `qtarget`, it allows you to upgrade your server's performance without having to rewrite a single export in your existing scripts.
 
