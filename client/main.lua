@@ -2,16 +2,12 @@ local isTargeting = false
 local isMenuOpen = false
 local currentTarget = { entity = nil, coords = nil, distance = 0 }
 local ActiveOptions = {}
-local currentMenu = nil
-local menuHistory = {}
 local lastOutlinedEntity = nil
 local waitingForRelease = false
 local ignoreTargetTime = 0
 
 local function CloseMenu()
     isMenuOpen = false
-    currentMenu = nil
-    menuHistory = {}
     if not Config.HideEyeWhenTargetAvailable then
         SendNUIMessage({ type = "eye", state = false })
     end
@@ -45,64 +41,83 @@ local function GenerateMenuPayload(entity, entityType, model, distance, coords, 
     local idCounter = 0
     ActiveOptions = {}
 
+    local function processOption(opt, zoneId)
+        local canAdd = true
+        local matchedBone = nil
+
+        if opt.groups and not Utils.HasGroup(opt.groups) then canAdd = false end
+        if canAdd and opt.items and not Utils.HasItem(opt.items, opt.anyItem) then canAdd = false end
+
+        if canAdd and opt.bones and entity and entity > 0 then
+            local boneFound = false
+            local _type = type(opt.bones)
+            local closestDist = opt.distance or 2.0
+
+            if _type == 'string' then
+                local boneId = GetEntityBoneIndexByName(entity, opt.bones)
+                if boneId ~= -1 and #(coords - GetEntityBonePosition_2(entity, boneId)) <= closestDist then
+                    boneFound = true
+                    matchedBone = boneId
+                end
+            elseif _type == 'table' then
+                for j = 1, #opt.bones do
+                    local boneId = GetEntityBoneIndexByName(entity, opt.bones[j])
+                    if boneId ~= -1 and #(coords - GetEntityBonePosition_2(entity, boneId)) <= closestDist then
+                        boneFound = true
+                        matchedBone = boneId
+                        break
+                    end
+                end
+            end
+            if not boneFound then canAdd = false end
+        end
+
+        if canAdd and opt.offset and entity and entity > 0 and model then
+            local offsetCoords = GetOffsetFromEntityInWorldCoords(entity, opt.offset.x, opt.offset.y, opt.offset.z)
+            if #(coords - offsetCoords) > (opt.offsetSize or 1.0) then canAdd = false end
+        end
+
+        if canAdd and opt.canInteract then
+            local s, res = pcall(opt.canInteract, entity, distance, coords, opt.name, matchedBone)
+            canAdd = s and res
+        end
+
+        if canAdd then
+            opt.zoneId = zoneId
+            opt.matchedBone = matchedBone
+            idCounter = idCounter + 1
+            ActiveOptions[idCounter] = opt
+            
+            local itemPayload = {
+                id = idCounter,
+                label = opt.label or "Interact",
+                icon = opt.icon or "fas fa-circle",
+                description = opt.description or ""
+            }
+
+            if opt.submenu and type(opt.submenu) == "table" then
+                itemPayload.submenu = {}
+                for _, subOpt in ipairs(opt.submenu) do
+                    subOpt.distance = subOpt.distance or opt.distance 
+                    local childPayload = processOption(subOpt, zoneId)
+                    if childPayload then
+                        table.insert(itemPayload.submenu, childPayload)
+                    end
+                end
+            end
+
+            return itemPayload
+        end
+        return nil
+    end
+
     local function parseOptions(opts, zoneId)
         if not opts then return end
         for _, opt in ipairs(opts) do
-            local optMenuName = opt.menuName or nil
-            if optMenuName == currentMenu then
-                if not opt.distance or distance <= opt.distance then
-                    local canAdd = true
-                    local matchedBone = nil
-
-                    if opt.groups and not Utils.HasGroup(opt.groups) then canAdd = false end
-                    if canAdd and opt.items and not Utils.HasItem(opt.items, opt.anyItem) then canAdd = false end
-
-                    if canAdd and opt.bones and entity and entity > 0 then
-                        local boneFound = false
-                        local _type = type(opt.bones)
-                        local closestDist = opt.distance or 2.0
-
-                        if _type == 'string' then
-                            local boneId = GetEntityBoneIndexByName(entity, opt.bones)
-                            if boneId ~= -1 and #(coords - GetEntityBonePosition_2(entity, boneId)) <= closestDist then
-                                boneFound = true
-                                matchedBone = boneId
-                            end
-                        elseif _type == 'table' then
-                            for j = 1, #opt.bones do
-                                local boneId = GetEntityBoneIndexByName(entity, opt.bones[j])
-                                if boneId ~= -1 and #(coords - GetEntityBonePosition_2(entity, boneId)) <= closestDist then
-                                    boneFound = true
-                                    matchedBone = boneId
-                                    break
-                                end
-                            end
-                        end
-                        if not boneFound then canAdd = false end
-                    end
-
-                    if canAdd and opt.offset and entity and entity > 0 and model then
-                        local offsetCoords = GetOffsetFromEntityInWorldCoords(entity, opt.offset.x, opt.offset.y, opt.offset.z)
-                        if #(coords - offsetCoords) > (opt.offsetSize or 1.0) then canAdd = false end
-                    end
-
-                    if canAdd and opt.canInteract then
-                        local s, res = pcall(opt.canInteract, entity, distance, coords, opt.name, matchedBone)
-                        canAdd = s and res
-                    end
-
-                    if canAdd then
-                        opt.zoneId = zoneId
-                        opt.matchedBone = matchedBone
-                        idCounter = idCounter + 1
-                        ActiveOptions[idCounter] = opt
-                        table.insert(menuPayload, {
-                            id = idCounter,
-                            label = opt.label or "Interact",
-                            icon = opt.icon or "fas fa-circle",
-                            description = opt.description or ""
-                        })
-                    end
+            if not opt.distance or distance <= opt.distance then
+                local payload = processOption(opt, zoneId)
+                if payload then
+                    table.insert(menuPayload, payload)
                 end
             end
         end
@@ -121,17 +136,6 @@ local function GenerateMenuPayload(entity, entityType, model, distance, coords, 
 
     for _, z in ipairs(nearbyZones) do parseOptions(z.options, z.id) end
 
-    if currentMenu ~= nil then
-        idCounter = idCounter + 1
-        ActiveOptions[idCounter] = { builtin = 'goback' }
-        table.insert(menuPayload, 1, {
-            id = idCounter,
-            label = "Go Back",
-            icon = "fas fa-circle-chevron-left",
-            description = ""
-        })
-    end
-
     return menuPayload
 end
 
@@ -146,7 +150,6 @@ local function StartTargeting()
     if isTargeting or isMenuOpen or exports['ak47_target']:isDisabled() or IsPauseMenuActive() then return end
     isTargeting = true
     SendNUIMessage({ type = "eye", state = true })
-    currentMenu = nil
 
     if Config.ShowZoneBubble and not HasStreamedTextureDictLoaded('shared') then
         RequestStreamedTextureDict('shared', false)
@@ -315,19 +318,6 @@ RegisterNUICallback('clicked', function(data, cb)
     cb('ok')
 
     if option then
-        if option.builtin == 'goback' then
-            currentMenu = table.remove(menuHistory)
-            local payload = GenerateMenuPayload(currentTarget.entity, GetEntityType(currentTarget.entity), GetEntityModel(currentTarget.entity), currentTarget.distance, currentTarget.coords, GetNearbyZones(currentTarget.coords))
-            SendNUIMessage({ type = "open", menu = payload })
-            return
-        elseif option.openMenu then
-            table.insert(menuHistory, currentMenu)
-            currentMenu = option.openMenu
-            local payload = GenerateMenuPayload(currentTarget.entity, GetEntityType(currentTarget.entity), GetEntityModel(currentTarget.entity), currentTarget.distance, currentTarget.coords, GetNearbyZones(currentTarget.coords))
-            SendNUIMessage({ type = "open", menu = payload })
-            return
-        end
-
         CloseMenu()
 
         local response = {}
