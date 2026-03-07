@@ -30,7 +30,6 @@ Whether you are adding a simple ATM target, drawing complex polygon zones, or bu
 2. Extract the `ak47_target` folder into your server's `resources` directory.
 3. Ensure you completely stop and remove any existing targeting scripts (e.g., `qb-target`, `ox_target`).
 4. Add `ensure ak47_target` to your `server.cfg`.
-5. *Optional:* If you are using scripts that check for the state of old target resources, you can rename the folder to `qb-target` or `ox_target`—the internal exports will still function perfectly.
 
 ---
 
