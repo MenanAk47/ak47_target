@@ -29,7 +29,7 @@ Whether you are adding a simple ATM target, drawing complex polygon zones, or bu
 1. Download the latest release from the repository.
 2. Extract the `ak47_target` folder into your server's `resources` directory.
 3. Ensure you completely stop and remove any existing targeting scripts (e.g., `qb-target`, `ox_target`).
-4. Add `ensure ak47_target` to your `server.cfg`.
+4. Add `start ak47_target` after the framework (es_extended/qb-core/qbx_core) to your `server.cfg`.
 
 ---
 
