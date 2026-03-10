@@ -269,4 +269,3 @@ function removeZone(id)
         TargetAPI.Zones[id] = nil
     end
 end
-exports('removeZone', removeZone)

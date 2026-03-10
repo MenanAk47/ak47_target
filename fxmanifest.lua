@@ -2,7 +2,7 @@ fx_version 'adamant'
 game 'gta5'
 description 'Ak47 Target'
 author 'MenanAk47'
-version '1.6.1'
+version '1.6.2'
 
 ui_page 'web/index.html'
 --ui_page 'http://localhost:5173'
@@ -18,9 +18,9 @@ shared_scripts {
 
 client_scripts {
     'config.lua',
+    'client/zones.lua',
     'client/api.lua',
     'client/frameworks.lua',
-    'client/zones.lua',
     'client/defaults.lua',
     'client/main.lua',
     'client/compat.lua',

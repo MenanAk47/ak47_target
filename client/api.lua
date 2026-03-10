@@ -264,7 +264,9 @@ ExportHandler('getTargetOptions', getTargetOptions)
 
 local function addSphereZone(data)
     if type(data) ~= 'table' then return print("^1[ak47_target] Error: addSphereZone requires a data table.^0") end
-    if type(data.coords) ~= 'vector3' then return print("^1[ak47_target] Error: addSphereZone requires 'coords' to be a vector3.^0") end
+    if type(data.coords) ~= 'vector3' then 
+        data.coords = vector3(data.coords.x, data.coords.y, data.coords.z)
+    end
     
     data.radius = data.radius or 2.0
     
@@ -285,7 +287,9 @@ ExportHandler('addSphereZone', addSphereZone)
 
 local function addBoxZone(data)
     if type(data) ~= 'table' then return print("^1[ak47_target] Error: addBoxZone requires a data table.^0") end
-    if type(data.coords) ~= 'vector3' then return print("^1[ak47_target] Error: addBoxZone requires 'coords' to be a vector3.^0") end
+    if type(data.coords) ~= 'vector3' then 
+        data.coords = vector3(data.coords.x, data.coords.y, data.coords.z)
+    end
     
     data.size = type(data.size) == 'vector3' and data.size or vector3(2.0, 2.0, 2.0)
     data.rotation = data.rotation or 0.0
