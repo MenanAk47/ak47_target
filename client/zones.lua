@@ -45,7 +45,8 @@ end
 
 local function DrawBoxDebug(coords, size, rotation)
     local w, l, h = size.x / 2, size.y / 2, (size.z or 2.0) / 2
-    local rad = math.rad(-rotation)
+    
+    local rad = math.rad(rotation) 
     local cosRot, sinRot = math.cos(rad), math.sin(rad)
 
     local function getPoint(dx, dy, dz)
@@ -55,14 +56,14 @@ local function DrawBoxDebug(coords, size, rotation)
 
     local p = {
         getPoint(-w, -l, -h), getPoint(w, -l, -h), getPoint(w, l, -h), getPoint(-w, l, -h),
-    getPoint(-w, -l, h), getPoint(w, -l, h), getPoint(w, l, h), getPoint(-w, l, h)}
+        getPoint(-w, -l, h), getPoint(w, -l, h), getPoint(w, l, h), getPoint(-w, l, h),
+    }
 
     local r, g, b = 255, 0, 0
-    -- Bottom & Top Lines
     for i = 1, 4 do
         DrawLine(p[i], p[i % 4 + 1], r, g, b, 255)
         DrawLine(p[i + 4], p[(i % 4) + 5], r, g, b, 255)
-        DrawLine(p[i], p[i + 4], r, g, b, 255) -- Pillars
+        DrawLine(p[i], p[i + 4], r, g, b, 255)
     end
 end
 

@@ -138,18 +138,30 @@ end
 -- =================================================================
 
 ExportHandler('AddBoxZone', function(isQtarget, invokingResource, name, center, length, width, options, targetoptions)
-    local z = center.z
+    local centerZ = center.z
+    local height = 2.0
 
-    if not options.minZ then options.minZ = -100 end
-    if not options.maxZ then options.maxZ = 800 end
+    if options.minZ and options.maxZ then
+        height = math.abs(options.maxZ - options.minZ)
+        centerZ = (options.maxZ + options.minZ) / 2.0
+    elseif options.minZ then
+        height = math.abs((center.z + 2.0) - options.minZ)
+        centerZ = options.minZ + (height / 2.0)
+    elseif options.maxZ then
+        height = math.abs(options.maxZ - (center.z - 2.0))
+        centerZ = options.maxZ - (height / 2.0)
+    else
+        height = 900.0
+        centerZ = center.z
+    end
 
     local formattedOpts = FormatOptions(targetoptions, isQtarget, invokingResource)
     formattedOpts._legacyName = name
 
     return exports['ak47_target']:addBoxZone({
         name = name,
-        coords = center,
-        size = vec3(width, length, math.abs(options.maxZ - options.minZ)),
+        coords = vec3(center.x, center.y, centerZ),
+        size = vec3(width, length, height),
         debug = options.debugPoly,
         rotation = options.heading,
         options = formattedOpts,
@@ -188,7 +200,7 @@ ExportHandler('AddCircleZone', function(isQtarget, invokingResource, name, cente
 
     return exports['ak47_target']:addSphereZone({
         name = name,
-        coords = vector3(center.x, center.y, center.z),
+        coords = vec3(center.x, center.y, center.z),
         radius = radius,
         debug = options.debugPoly,
         options = formattedOpts,
