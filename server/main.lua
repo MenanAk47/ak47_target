@@ -8,7 +8,7 @@ RegisterNetEvent('ak47_target:server:setEntityHasOptions', function(netId)
     end
 end)
 
-RegisterNetEvent('ak47_target:server:toggleDoor', function(netId)
+RegisterNetEvent('ak47_target:server:toggleDoor', function(netId, door)
     local entity = NetworkGetEntityFromNetworkId(netId)
     if not DoesEntityExist(entity) then return end
 

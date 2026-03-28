@@ -12,7 +12,7 @@ local function toggleDoor(vehicle, door)
 end
 
 local function canInteractWithDoor(entity, coords, door, useOffset)
-    if not GetIsDoorValid(entity, door) or GetVehicleDoorLockStatus(entity) > 1 or IsVehicleDoorDamaged(entity, door) then return false end
+    if not GetIsDoorValid(entity, door) or GetVehicleDoorLockStatus(entity) > 1 or IsVehicleDoorDamaged(entity, door) or IsPedInAnyVehicle(PlayerPedId(), false) then return false end
     if useOffset then return true end
 
     local boneName = bones[door]
@@ -49,10 +49,22 @@ CreateThread(function()
             onSelect = function(data) onSelectDoor(data, 0) end
         },
         {
+            name = 'ak47_target:driverR', icon = 'fas fa-car-side', label = 'Toggle Rear Driver Door',
+            bones = { 'door_dside_r', 'seat_dside_r' }, distance = 2.0,
+            canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 2) end,
+            onSelect = function(data) onSelectDoor(data, 2) end
+        },
+        {
             name = 'ak47_target:passengerF', icon = 'fas fa-car-side', label = 'Toggle Passenger Door',
             bones = { 'door_pside_f', 'seat_pside_f' }, distance = 2.0,
             canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 1) end,
             onSelect = function(data) onSelectDoor(data, 1) end
+        },
+        {
+            name = 'ak47_target:passengerR', icon = 'fas fa-car-side', label = 'Toggle Rear Passenger Door',
+            bones = { 'door_pside_r', 'seat_pside_r' }, distance = 2.0,
+            canInteract = function(entity, distance, coords) return canInteractWithDoor(entity, coords, 3) end,
+            onSelect = function(data) onSelectDoor(data, 3) end
         },
         {
             name = 'ak47_target:bonnet', icon = 'fas fa-car', label = 'Toggle Hood',
