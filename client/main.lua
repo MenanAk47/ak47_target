@@ -49,31 +49,46 @@ local function GenerateMenuPayload(entity, entityType, model, distance, coords, 
         if canAdd and opt.items and not Utils.HasItem(opt.items, opt.anyItem) then canAdd = false end
 
         if canAdd and opt.bones and entity and entity > 0 then
-            local boneFound = false
             local _type = type(opt.bones)
-            local closestDist = opt.distance or 2.0
 
             if _type == 'string' then
                 local boneId = GetEntityBoneIndexByName(entity, opt.bones)
-                if boneId ~= -1 and #(coords - GetEntityBonePosition_2(entity, boneId)) <= closestDist then
-                    boneFound = true
+                if boneId ~= -1 and #(coords - GetEntityBonePosition_2(entity, boneId)) <= (opt.distance or 2.0) then
                     matchedBone = boneId
+                else
+                    canAdd = false
                 end
             elseif _type == 'table' then
+                local closestBone, closestBoneDistance
+
                 for j = 1, #opt.bones do
                     local boneId = GetEntityBoneIndexByName(entity, opt.bones[j])
-                    if boneId ~= -1 and #(coords - GetEntityBonePosition_2(entity, boneId)) <= closestDist then
-                        boneFound = true
-                        matchedBone = boneId
-                        break
+                    if boneId ~= -1 then
+                        local dist = #(coords - GetEntityBonePosition_2(entity, boneId))
+                        if dist <= (opt.distance or 2.0) and (not closestBoneDistance or dist < closestBoneDistance) then
+                            closestBone = boneId
+                            closestBoneDistance = dist
+                        end
                     end
                 end
+
+                if closestBone then
+                    matchedBone = closestBone
+                else
+                    canAdd = false
+                end
             end
-            if not boneFound then canAdd = false end
         end
 
         if canAdd and opt.offset and entity and entity > 0 and model then
-            local offsetCoords = GetOffsetFromEntityInWorldCoords(entity, opt.offset.x, opt.offset.y, opt.offset.z)
+            local offset = opt.offset
+
+            if not opt.absoluteOffset then
+                local minDim, maxDim = GetModelDimensions(model)
+                offset = (maxDim - minDim) * offset + minDim
+            end
+
+            local offsetCoords = GetOffsetFromEntityInWorldCoords(entity, offset.x, offset.y, offset.z)
             if #(coords - offsetCoords) > (opt.offsetSize or 1.0) then canAdd = false end
         end
 
@@ -218,10 +233,62 @@ local function StartTargeting()
 
     CreateThread(function()
         local flag = 511
-        local lastPayloadCount = 0
-        local lastEndCoords = vector3(0,0,0)
         local lastEntityHit = 0
-        local lastPayload = {}
+        local lastPayloadJson = '[]'
+
+        local pendingPayload = nil
+        local pendingPayloadJson = nil
+        local pendingHasTarget = false
+        local pendingSince = 0
+
+        local SWITCH_DEBOUNCE_MS = 110
+        local CLEAR_DEBOUNCE_MS = 140
+
+        local function applyPayload(payload, payloadJson, isValid, entityHit, entityType, endCoords, distance)
+            pendingPayload = nil
+            pendingPayloadJson = nil
+            pendingHasTarget = false
+            pendingSince = 0
+
+            if isValid ~= hasTarget then
+                hasTarget = isValid
+                lastPayloadJson = payloadJson
+
+                if hasTarget then
+                    if Config.HideEyeWhenTargetAvailable then
+                        SendNUIMessage({ type = "eye", state = false })
+                    end
+                    SendNUIMessage({ type = "open", menu = payload })
+                else
+                    SendNUIMessage({ type = "close" })
+                    if Config.HideEyeWhenTargetAvailable then
+                        SendNUIMessage({ type = "eye", state = true })
+                    end
+                end
+            elseif hasTarget and payloadJson ~= lastPayloadJson then
+                lastPayloadJson = payloadJson
+                SendNUIMessage({ type = "open", menu = payload })
+            end
+
+            if Config.DrawOutline then
+                if hasTarget and entityHit > 0 and entityType ~= 1 then
+                    if lastOutlinedEntity ~= entityHit then
+                        if lastOutlinedEntity then SetEntityDrawOutline(lastOutlinedEntity, false) end
+                        SetEntityDrawOutline(entityHit, true)
+                        lastOutlinedEntity = entityHit
+                    end
+                else
+                    if lastOutlinedEntity then
+                        SetEntityDrawOutline(lastOutlinedEntity, false)
+                        lastOutlinedEntity = nil
+                    end
+                end
+            end
+
+            if hasTarget then
+                currentTarget = { entity = entityHit, coords = endCoords, distance = distance }
+            end
+        end
 
         while isTargeting do
             if IsPauseMenuActive() then
@@ -229,73 +296,100 @@ local function StartTargeting()
                 break
             end
 
+            local now = GetGameTimer()
             local playerCoords = GetEntityCoords(playerPed)
-            local hit, entityHit, endCoords = Utils.RaycastCamera(10.0, flag)
+            local hit, entityHit, endCoords = Utils.RaycastCamera(10.0, flag, playerPed)
             local distance = hit and #(playerCoords - endCoords) or 0
+            local entityType = entityHit > 0 and GetEntityType(entityHit) or 0
 
-            if entityHit == 0 then
-                flag = flag == 511 and 26 or 511
+            if entityType == 0 then
+                local altFlag = flag == 511 and 26 or 511
+                local altHit, altEntityHit, altEndCoords = Utils.RaycastCamera(10.0, altFlag, playerPed)
+                local altDistance = altHit and #(playerCoords - altEndCoords) or 0
+
+                if altHit and (not hit or altDistance < distance) then
+                    flag, hit, entityHit, endCoords, distance = altFlag, altHit, altEntityHit, altEndCoords, altDistance
+                    entityType = entityHit > 0 and GetEntityType(entityHit) or 0
+                end
             end
 
             if hit then
-                local entityType = entityHit > 0 and GetEntityType(entityHit) or 0
                 local model = (entityHit > 0 and entityType > 0) and GetEntityModel(entityHit) or nil
-
-                local payload
-                local distMoved = #(endCoords - lastEndCoords)
-
-                if distMoved > 1.0 or entityHit ~= lastEntityHit or lastPayloadCount == 0 then
-                    nearbyZones = GetNearbyZones(endCoords) 
-                    payload = GenerateMenuPayload(entityHit, entityType, model, distance, endCoords, nearbyZones)
-                    
-                    lastEndCoords = endCoords
-                    lastEntityHit = entityHit
-                    lastPayload = payload
-                else
-                    payload = lastPayload
-                end
-
+                nearbyZones = GetNearbyZones(endCoords)
+                local payload = GenerateMenuPayload(entityHit, entityType, model, distance, endCoords, nearbyZones)
+                local payloadJson = json.encode(payload)
                 local isValid = #payload > 0
+                local entityChanged = entityHit ~= lastEntityHit
 
-                if isValid ~= hasTarget then
-                    hasTarget = isValid
+                if entityChanged or (not hasTarget and isValid) then
+                    applyPayload(payload, payloadJson, isValid, entityHit, entityType, endCoords, distance)
+                elseif payloadJson ~= lastPayloadJson or isValid ~= hasTarget then
+                    if pendingPayloadJson ~= payloadJson then
+                        pendingPayload = payload
+                        pendingPayloadJson = payloadJson
+                        pendingHasTarget = isValid
+                        pendingSince = now
+                    else
+                        local debounce = pendingHasTarget and SWITCH_DEBOUNCE_MS or CLEAR_DEBOUNCE_MS
+                        if now - pendingSince >= debounce then
+                            applyPayload(pendingPayload, pendingPayloadJson, pendingHasTarget, entityHit, entityType, endCoords, distance)
+                        end
+                    end
+                else
+                    pendingPayload = nil
+                    pendingPayloadJson = nil
+                    pendingHasTarget = false
+                    pendingSince = 0
+
                     if hasTarget then
-                        lastPayloadCount = #payload
-                        if Config.HideEyeWhenTargetAvailable then SendNUIMessage({ type = "eye", state = false }) end
-                        SendNUIMessage({ type = "open", menu = payload })
-                    else
-                        lastPayloadCount = 0
-                        SendNUIMessage({ type = "close" })
-                        if Config.HideEyeWhenTargetAvailable then SendNUIMessage({ type = "eye", state = true }) end
+                        currentTarget = { entity = entityHit, coords = endCoords, distance = distance }
                     end
-                elseif hasTarget and #payload ~= lastPayloadCount then
-                    lastPayloadCount = #payload
-                    SendNUIMessage({ type = "open", menu = payload })
-                end
 
-                if Config.DrawOutline then
-                    if hasTarget and entityHit > 0 and entityType ~= 1 then
-                        if lastOutlinedEntity ~= entityHit then
-                            if lastOutlinedEntity then SetEntityDrawOutline(lastOutlinedEntity, false) end
-                            SetEntityDrawOutline(entityHit, true)
-                            lastOutlinedEntity = entityHit
-                        end
-                    else
-                        if lastOutlinedEntity then
-                            SetEntityDrawOutline(lastOutlinedEntity, false)
-                            lastOutlinedEntity = nil
+                    if Config.DrawOutline then
+                        if hasTarget and entityHit > 0 and entityType ~= 1 then
+                            if lastOutlinedEntity ~= entityHit then
+                                if lastOutlinedEntity then SetEntityDrawOutline(lastOutlinedEntity, false) end
+                                SetEntityDrawOutline(entityHit, true)
+                                lastOutlinedEntity = entityHit
+                            end
+                        else
+                            if lastOutlinedEntity then
+                                SetEntityDrawOutline(lastOutlinedEntity, false)
+                                lastOutlinedEntity = nil
+                            end
                         end
                     end
                 end
 
-                if hasTarget then 
-                    currentTarget = { entity = entityHit, coords = endCoords, distance = distance }
+                lastEntityHit = entityHit
+            else
+                if hasTarget then
+                    if pendingPayloadJson ~= '[]' then
+                        pendingPayload = {}
+                        pendingPayloadJson = '[]'
+                        pendingHasTarget = false
+                        pendingSince = now
+                    elseif now - pendingSince >= CLEAR_DEBOUNCE_MS then
+                        applyPayload({}, '[]', false, 0, 0, endCoords, 0)
+                        lastEntityHit = 0
+                    end
+                else
+                    pendingPayload = nil
+                    pendingPayloadJson = nil
+                    pendingHasTarget = false
+                    pendingSince = 0
+                    lastEntityHit = 0
+
+                    if lastOutlinedEntity then
+                        SetEntityDrawOutline(lastOutlinedEntity, false)
+                        lastOutlinedEntity = nil
+                    end
                 end
             end
 
-            Wait(hit and 75 or 125) 
+            Wait(hit and 75 or 125)
         end
-        
+
         if Config.ShowZoneBubble and HasStreamedTextureDictLoaded('shared') then
             SetStreamedTextureDictAsNoLongerNeeded('shared')
         end
