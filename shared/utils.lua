@@ -42,11 +42,10 @@ function Utils.RaycastCamera(distance, flags, ignore)
         z = camCoord.z + dir.z * distance
     }
     local rayHandle = StartShapeTestRay(
-            camCoord.x, camCoord.y, camCoord.z,
-            dst.x, dst.y, dst.z,
-            flags or 511,
-            ignore or PlayerPedId(), 4
-        )
+        camCoord.x, camCoord.y, camCoord.z,
+        dst.x, dst.y, dst.z,
+        flags or 511,
+        ignore or PlayerPedId(), 4
     )
     local _, bHit, vHitCoords, _, hEntity = GetShapeTestResult(rayHandle)
     return bHit == 1, hEntity, vHitCoords
