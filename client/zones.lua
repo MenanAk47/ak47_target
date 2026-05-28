@@ -139,8 +139,7 @@ local function isPointInBox(point, boxCenter, size, cosRot, sinRot)
 end
 
 function createZone(zoneType, coords, options, customData)
-    zoneIdCounter = zoneIdCounter + 1
-    local id = zoneIdCounter
+    local resource = customData.resource or GetInvokingResource() or "ak47_target"
 
     if zoneType == 'box' then
         local rot = customData.rotation or 0.0
@@ -165,6 +164,28 @@ function createZone(zoneType, coords, options, customData)
         customData.maxRadius = maxRad
     end
 
+    -- Dedup: if a zone of the same type/coords from the same resource already exists, remove it first.
+    -- This prevents callers that re-register on init/refresh from stacking duplicate zones at the same spot.
+    do
+        local firstOpt = options and options[1]
+        local newKey = firstOpt and (firstOpt.name or firstOpt.label)
+        for existingId, existingZone in pairs(TargetAPI.Zones) do
+            if existingZone.resource == resource
+               and existingZone.type == zoneType
+               and existingZone.coords == coords then
+                local exFirst = existingZone.options and existingZone.options[1]
+                local exKey = exFirst and (exFirst.name or exFirst.label)
+                if newKey == nil or exKey == nil or newKey == exKey then
+                    RemoveZoneFromGrid(existingZone)
+                    TargetAPI.Zones[existingId] = nil
+                end
+            end
+        end
+    end
+
+    zoneIdCounter = zoneIdCounter + 1
+    local id = zoneIdCounter
+
     local zone = {
         id = id,
         type = zoneType,
@@ -172,7 +193,7 @@ function createZone(zoneType, coords, options, customData)
         options = options,
         data = customData,
         debug = customData.debug,
-        resource = customData.resource or GetInvokingResource() or "ak47_target"
+        resource = resource
     }
 
     TargetAPI.Zones[id] = zone
