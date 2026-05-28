@@ -47,6 +47,29 @@ local function AddTargetToTable(tbl, options)
     options = checkOptions(options)
     local resource = GetInvokingResource() or "ak47_target"
 
+    -- Build dedup keys: by explicit name, or by label as fallback (same resource only)
+    local checkNames = {}
+    local checkLabels = {}
+    for i = 1, #options do
+        local opt = options[i]
+        opt.resource = opt.resource or resource
+        if opt.name then
+            checkNames[opt.name] = true
+        elseif opt.label then
+            checkLabels[tostring(opt.label)] = true
+        end
+    end
+
+    for i = #tbl, 1, -1 do
+        local existing = tbl[i]
+        if existing.resource == resource then
+            if (existing.name and checkNames[existing.name]) or
+               (existing.label and checkLabels[tostring(existing.label)]) then
+                table.remove(tbl, i)
+            end
+        end
+    end
+
     for _, opt in ipairs(options) do
         opt.distance = opt.distance or 7.0
         opt.label = opt.label or "Interact"
