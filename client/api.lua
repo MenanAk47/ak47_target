@@ -47,29 +47,6 @@ local function AddTargetToTable(tbl, options)
     options = checkOptions(options)
     local resource = GetInvokingResource() or "ak47_target"
 
-    -- Build dedup keys: by explicit name, or by label as fallback (same resource only)
-    local checkNames = {}
-    local checkLabels = {}
-    for i = 1, #options do
-        local opt = options[i]
-        opt.resource = opt.resource or resource
-        if opt.name then
-            checkNames[opt.name] = true
-        elseif opt.label then
-            checkLabels[tostring(opt.label)] = true
-        end
-    end
-
-    for i = #tbl, 1, -1 do
-        local existing = tbl[i]
-        if existing.resource == resource then
-            if (existing.name and checkNames[existing.name]) or
-               (existing.label and checkLabels[tostring(existing.label)]) then
-                table.remove(tbl, i)
-            end
-        end
-    end
-
     for _, opt in ipairs(options) do
         opt.distance = opt.distance or 7.0
         opt.label = opt.label or "Interact"
@@ -303,7 +280,7 @@ local function addSphereZone(data)
         data.options = {opt} 
     end 
     
-    return createZone('sphere', data.coords, data.options, { radius = data.radius, debug = data.debug, resource = data.resource, drawSprite = data.drawSprite })
+    return createZone('sphere', data.coords, data.options, { name = data.name, radius = data.radius, debug = data.debug, resource = data.resource, drawSprite = data.drawSprite })
 end
 exports('addSphereZone', addSphereZone)
 ExportHandler('addSphereZone', addSphereZone)
@@ -327,7 +304,7 @@ local function addBoxZone(data)
         data.options = {opt} 
     end
     
-    return createZone('box', data.coords, data.options, { size = data.size, rotation = data.rotation, debug = data.debug, resource = data.resource, drawSprite = data.drawSprite })
+    return createZone('box', data.coords, data.options, { name = data.name, size = data.size, rotation = data.rotation, debug = data.debug, resource = data.resource, drawSprite = data.drawSprite })
 end
 exports('addBoxZone', addBoxZone)
 ExportHandler('addBoxZone', addBoxZone)
@@ -350,7 +327,7 @@ local function addPolyZone(data)
         data.options = {opt} 
     end
     
-    return createZone('poly', nil, data.options, { points = data.points, thickness = data.thickness, minZ = data.minZ, maxZ = data.maxZ, debug = data.debug, resource = data.resource, drawSprite = data.drawSprite })
+    return createZone('poly', nil, data.options, { name = data.name, points = data.points, thickness = data.thickness, minZ = data.minZ, maxZ = data.maxZ, debug = data.debug, resource = data.resource, drawSprite = data.drawSprite })
 end
 exports('addPolyZone', addPolyZone)
 ExportHandler('addPolyZone', addPolyZone)
@@ -361,6 +338,24 @@ exports('removeZone', removeZone)
 -- =================================================================
 -- 8. RESOURCE STOP CLEANUP (AUTO-REMOVE TARGETS & ZONES)
 -- =================================================================
+
+-- Periodic cleanup: remove stale LocalEntities entries for entities that no longer exist.
+-- Without this, deleted entity handles can be reused by new entities which then inherit
+-- leftover target options (e.g. money pickup interactions persisting after collection).
+CreateThread(function()
+    while true do
+        Wait(2000)
+        local stale = {}
+        for entityHandle in pairs(TargetAPI.LocalEntities) do
+            if not DoesEntityExist(entityHandle) then
+                stale[#stale + 1] = entityHandle
+            end
+        end
+        for i = 1, #stale do
+            TargetAPI.LocalEntities[stale[i]] = nil
+        end
+    end
+end)
 
 AddEventHandler('onResourceStop', function(resourceName)
     local simpleTables = { TargetAPI.Peds, TargetAPI.Vehicles, TargetAPI.Objects, TargetAPI.Players, TargetAPI.Globals }
